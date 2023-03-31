@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gretl-functions>
+<gretl-function-package name="pExtras" minver="2022j">
+<author email="oleg_komashko@ukr.net">Oleh Komashko</author>
+<version>0.2</version>
+<date>2023-04-01</date>
+<description>panel data utilities</description>
+<tags>C22 C33</tags>
+<help>
+The package contains 2 public functions:
+p_time() and z_Hausman()
+
+function series p_time (series *id &quot;group identifier)
+
+Creates panel pseudotime based on group identifier
+
+function matrix z_Hausman (bundle *b1 &quot;$model after fe estimation&quot;,
+                         bundle*b2 &quot;$model after re estimation&quot;)
+
+Performs Hausman test for individual coefficients
+</help>
+<gretl-function name="p_time" type="series">
+ <params count="1">
+  <param name="id" type="seriesref"/>
+ </params>
+<code>matr = aggregate(id,id)
+series y = 0
+loop i = 1..(rows(matr)) -q
+  y += cum(id == matr[i,1])*(id == matr[i,1])
+endloop
+return y
+</code>
+</gretl-function>
+<gretl-function name="z_Hausman" type="matrix">
+ <params count="2">
+  <param name="b1" type="bundleref"/>
+  <param name="b2" type="bundleref"/>
+ </params>
+<code>if (b1.command != &quot;panel&quot;)||(b2.command != &quot;panel&quot;)
+  funcerr &quot;command should be 'panel' only&quot;
+endif
+catch matrix ha = b2.hausman
+reerr = $error
+if reerr
+  funcerr &quot;the second bundle sould be random effects results only&quot;
+endif
+catch bundle bfee = b1.fixed_effects_F
+feerr = $error
+if feerr
+  funcerr &quot;the first bundle sould be fixed effects results only&quot;
+endif
+names1 = strjoin(varnames(b1.xlist))
+names2 = strjoin(varnames(b2.xlist))
+setin = str_setdiff(names1,names2)
+setin2 = str_setinrersect(names1,names2)
+if (strlen(setin) &gt; 0)||(names1 != setin2)
+  funcerr &quot;fe model is not embedded into re model&quot;
+endif
+matrix findis = findinds(names1,names2)
+matrix beta1 = b1.coeff
+matrix beta2 = b2.coeff[findis]
+#eval findinds(names1,names2)
+matrix se1 = b1.stderr
+matrix se2 = b2.stderr[findis]
+matrix num = beta1 - beta2
+matrix cond = (se1.^2 - se2.^2) .&gt; 0
+bignnum = nelem(num)
+num = subsetc(num,cond)
+smallnnum = nelem(num)
+matrix den = sqrt(subsetc((se1.^2 - se2.^2),cond))
+vns0 = varnames(b1.xlist)
+strings vns
+strings vnsOUT
+loop i = 1..nelem(b1.xlist) -q
+  if cond[i] &gt; 0
+    vns +=vns0[i]
+  else
+    vnsOUT += vns0[i]
+  endif
+endloop
+printf &quot;\n Individual coefficients Hausman Test\n&quot;
+coeffmat = num'~den'
+modprint coeffmat vns
+lastn = bignnum - smallnnum
+if lastn &gt; 0
+  nnns = vnsOUT[1]
+endif
+if lastn &gt; 1
+  loop i = 2..lastn -q
+    nnns = nnns~&quot;, &quot;~vnsOUT[i]
+  endloop
+endif
+if lastn &gt; 0
+  printf &quot;\nThe following vars were excluded from the test: %s\n&quot;, nnns
+endif
+return coeffmat
+</code>
+</gretl-function>
+<gretl-function name="subsetc" type="matrix" private="1">
+ <params count="2">
+  <param name="x" type="matrix"/>
+  <param name="cond" type="matrix"/>
+ </params>
+<code>if  min(cond) &lt; 0
+  funcerr &quot;wrong condition&quot;
+endif
+xm = xmin(rows(x),cols(x))
+if xm &gt; 1
+  funcerr &quot;only row and column vectors allowed&quot;
+endif
+cm = xmin(rows(cond),cols(cond))
+if xm &gt; 1
+  funcerr &quot;only row and column vectors allowed for condition&quot;
+endif
+nx = nelem(x)
+nc = nelem(cond)
+if nx != nc
+  funcerr &quot;wrong length of confition&quot;
+endif
+x = vec(x)'
+cond = vec(cond)'
+matrix z = seq(1,nx).*(cond .&gt; 0)
+matrix vz = values(z)
+nvz = nelem(vz)
+if nvz &gt; 1
+  vz = vz[1] == 0 ? vz[2:] : vz
+else
+  vz = vz[1] == 0 ? {} : vz
+endif
+nvz = nelem(vz)
+if nvz == 0
+  return {}
+else
+  return x[vz]
+endif
+</code>
+</gretl-function>
+<gretl-function name="str_setdiff" type="string" private="1">
+ <params count="2">
+  <param name="bigstr" type="string"/>
+  <param name="str" type="string"/>
+ </params>
+<code>strings strs = strsplit(str)
+strings bigstrs = strsplit(bigstr)
+scalar bn = nelem(bigstrs)
+string ret = &quot;&quot;
+scalar fi
+loop i = 1..bn -q
+  fi = findind(bigstrs[i],str)
+  if fi == 0
+    ret = ret~&quot; &quot;~bigstrs[i]
+  endif
+endloop
+ret = strstrip(ret)
+return ret
+</code>
+</gretl-function>
+<gretl-function name="str_setinrersect" type="string" private="1">
+ <params count="2">
+  <param name="str1" type="string"/>
+  <param name="str2" type="string"/>
+ </params>
+<code>matrix inds = findinds(str1,str2)
+str1s = strsplit(str1)
+n = nelem(str1s)
+ret = &quot;&quot;
+loop i=1..n -q
+  if  inds[i]
+    ret = ret~&quot; &quot;~str1s[i]
+  endif
+endloop
+ret = strstrip(ret)
+return ret
+</code>
+</gretl-function>
+<gretl-function name="findind" type="scalar" private="1">
+ <params count="2">
+  <param name="smallstr" type="string"/>
+  <param name="bigstr" type="string"/>
+ </params>
+<code>strs = strsplit(bigstr)
+n = nelem(strs)
+scalar ret = 0
+loop i=1..n -q
+  if smallstr==strs[i]
+    ret = i
+    break
+  endif
+endloop
+return ret
+</code>
+</gretl-function>
+<gretl-function name="strjoin" type="string" private="1">
+ <params count="2">
+  <param name="strs" type="strings"/>
+  <param name="collapce" type="string" optional="true"/>
+ </params>
+<code>if !exists(collapce)
+  collapce = &quot; &quot;
+endif
+n = nelem(strs)
+ret = strs[1]
+if n&gt;1
+  loop i = 2..n -q
+    ret = ret~collapce~strs[i]
+  endloop
+endif
+ret = strstrip(ret)
+return ret
+</code>
+</gretl-function>
+<gretl-function name="findinds" type="matrix" private="1">
+ <params count="2">
+  <param name="str" type="string"/>
+  <param name="bigstr" type="string"/>
+ </params>
+<code>strs = strsplit(str)
+n = nelem(strs)
+matrix ret = zeros(1,n)
+loop i=1..n -q
+  ret[i]=findind(strs[i],bigstr)
+endloop
+return ret
+</code>
+</gretl-function>
+<sample-script>
+include pExtras.gfn
+open star.gdt
+series y = p_time(&amp;schid)
+</sample-script>
+</gretl-function-package>
+</gretl-functions>
