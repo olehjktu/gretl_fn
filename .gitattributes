@@ -1,3 +1,2 @@
-# Preserve gretl data files without any text conversion
 *.gdt -text
 *.csv -text
